@@ -172,7 +172,7 @@ async function getOrders() {
     id:r.id, talepTipi:r.talep_tipi, talepNo:r.talep_no, strNo:r.str_no,
     malzKodu:r.malz_kodu, malzTanim:r.malz_tanim, origQty:r.orig_qty,
     bagMiktar:r.bag_miktar, sozTarih:r.soz_tarih, tedNo:r.ted_no,
-    tedUnvan:r.ted_unvan, acil:r.acil, gizli:r.gizli||false
+    tedUnvan:r.ted_unvan, acil:r.acil, gizli:r.gizli||false, beklenmez:r.beklenmez||false, ek1:r.ek1||"", sipTarih:r.sip_tarih||""
   }));
 }
 async function uploadOrders(rows) {
@@ -189,6 +189,7 @@ async function uploadOrders(rows) {
 }
 async function setAcil(id, acil) { await sbPatch("siparisler?id=eq."+encodeURIComponent(id), {acil}); }
 async function setGizli(id, gizli) { await sbPatch("siparisler?id=eq."+encodeURIComponent(id), {gizli}); }
+async function setBeklenmez(tedNo, val) { await sbPatch("siparisler?ted_no=eq."+encodeURIComponent(tedNo), {beklenmez:val}); }
 
 async function getResponses() {
   const rows = await sbGet("yanıtlar?select=*");
@@ -325,9 +326,10 @@ function parseOrderExcel(wb){
       id:tedNo+"-"+talepNo+"-"+strNo,
       talepTipi:String(r[0]||"").trim(), talepNo, strNo,
       malzKodu:String(r[3]||"").trim(), malzTanim:String(r[4]||"").trim(),
+      ek1:String(r[13]||"").trim(),
       origQty:String(r[5]||"").trim(), bagMiktar:String(r[6]||"").trim(),
-      sozTarih:serialToISO(r[9]), tedNo,
-      tedUnvan:String(r[12]||"").trim(), acil:false
+      sozTarih:serialToISO(r[9]), sipTarih:serialToISO(r[15]),
+      tedNo, tedUnvan:String(r[12]||"").trim(), acil:false, beklenmez:false
     });
   }
   return result;
@@ -366,43 +368,34 @@ function supplierStatus(orders, resp){
 function buildMail(tedUnvan, tip, link, tedNo, hatNo, kalemler){
   const n=hatNo||1;
   const sifre=tedNo||"";
-  const linkBlok="Form Linki: "+link+(sifre?"\nErişim Şifresi: "+sifre:"");
-  const imza="\n\nSaygılarımızla,\nÇimtaş Hassas İşleme Satın Alma";
+  const linkBlok="Tedarikçi Portalı: "+link+"\nKullanıcı Adı / Erişim Kodu: "+sifre;
+  const imza="\n\nİyi çalışmalar dileriz.\nÇimtaş Hassas İşleme Satın Alma";
   let subj, body;
 
   if(tip==="ilk"){
-    subj="Açık Sipariş - Teslim Tarihi Güncelleme Talebi - "+tedUnvan;
+    subj="Aksiyon Bekleniyor: Teslim Tarihlerinin Girilmesi Hk. - "+tedUnvan;
     body="Sayın "+tedUnvan+" Yetkilileri,\n\n"
-      +"Açık sipariş kalemlerinizde yer alan teslim tarihlerinin güncellenmesini talep etmekteyiz. "
-      +"Güncel bilgileri aşağıdaki link üzerinden sisteme girmenizi rica ederiz.\n\n"
-      +linkBlok+"\n\n"
-      +"Güncellemelerin 2 iş günü içinde tamamlanmasını önemle rica ederiz."
+      +"Tedarikçi portalımızda yer alan siparişleriniz için henüz teslim tarihlerini girmediğinizi tespit ettik. "
+      +"Süreçlerin aksamaması adına, eksik olan teslim tarihlerini en geç 2 gün içinde sisteme girmenizi rica ederiz.\n\n"
+      +linkBlok
       +imza;
 
   } else if(tip==="hatirlatma"){
     if(n===1){
-      subj="Hatırlatma: Teslim Tarihi Güncelleme Bekleniyor - "+tedUnvan;
+      subj="Acil Hatırlatma: Teslim Tarihlerinin Girilmesi Hk. - "+tedUnvan;
       body="Sayın "+tedUnvan+" Yetkilileri,\n\n"
-        +"Daha önce ilettiğimiz teslim tarihi güncelleme talebine henüz dönüş yapılmamıştır. "
-        +"Açık sipariş kalemlerinizi aşağıdaki linkten bugün güncellemenizi talep ediyoruz.\n\n"
+        +"Daha önce tarafınıza ilettiğimiz hatırlatmamıza rağmen teslim tarihlerinin girişi henüz tamamlanmamıştır. "
+        +"Planlama süreçlerimizi doğrudan etkileyen bu durumun çözümü için, teslim tarihlerini bugün içerisinde mutlaka sisteme girmenizi önemle rica ederiz.\n\n"
         +linkBlok
         +imza;
-    } else if(n===2){
-      subj="2. Hatırlatma: Teslim Tarihi Güncelleme - "+tedUnvan;
-      body="Sayın "+tedUnvan+" Yetkilileri,\n\n"
-        +"Teslim tarihi güncelleme talebimizi ikinci kez iletiyoruz. "
-        +"Tedarik süreçlerimizin aksamaması için güncellemelerin bugün mesai bitimine kadar tamamlanması gerekmektedir.\n\n"
-        +linkBlok+"\n\n"
-        +"Konuya ilişkin bir sorunuz varsa bizimle iletişime geçebilirsiniz."
-        +imza;
     } else {
-      subj="ACİL – "+n+". Hatırlatma: Teslim Tarihi Güncelleme – "+tedUnvan;
+      subj="Son Uyarı: Sipariş Teslim Tarihlerinin Girilmemesi Hk. - "+tedUnvan;
       body="Sayın "+tedUnvan+" Yetkilileri,\n\n"
-        +"Teslim tarihi güncelleme talebimize "+n+". kez dönüş bekliyoruz. "
-        +"Bu durumun tedarikçi performans değerlendirmemizi olumsuz etkileyeceğini ve ilerleyen süreçte yeni sipariş kararlarımızı etkileyebileceğini hatırlatmak isteriz.\n\n"
-        +"Lütfen açık sipariş kalemlerinizi BUGÜN aşağıdaki linkten güncelleyiniz.\n\n"
-        +linkBlok+"\n\n"
-        +"Acil olarak dönüş bekliyoruz."
+        +"Tedarikçi portalımızdaki siparişler için beklenen teslim tarihi girişleri henüz yapılmamıştır. "
+        +"Süreçlerin takibi ve planlamanın sağlıklı yürütülebilmesi adına bu verilere acilen ihtiyaç duymaktayız.\n\n"
+        +"Gecikmenin operasyonel süreçlerimizi olumsuz etkilememesi için, eksik bilgilerin en kısa sürede ve gün içinde tamamlanmasını rica ederiz. "
+        +"Konunun aciliyetine ve önemine dikkat etmenizi bekleriz.\n\n"
+        +linkBlok
         +imza;
     }
 
@@ -529,8 +522,10 @@ async function showSupplierView(supplierId){
       </td>
       <td class="mono">${esc(o.talepTipi)} ${esc(o.talepNo)}/${esc(o.strNo)}</td>
       <td><code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px">${esc(o.malzKodu)}</code></td>
+      <td class="text-xs" style="color:var(--gray)">${esc(o.ek1||"—")}</td>
       <td style="max-width:200px"><div class="truncate" title="${esc(o.malzTanim)}">${esc(o.malzTanim)}</div></td>
       <td class="fw6">${esc(o.bagMiktar)}</td>
+      <td class="text-xs" style="color:var(--lgray)">${o.sipTarih?fmtDate(o.sipTarih):"—"}</td>
       <td>${fmtDate(o.sozTarih)}</td>
       <td>
         <input type="text" id="sup-date-${o.id}" value="${esc(r.yeniTarih ? fmtDate(r.yeniTarih) : "")}" placeholder="GG.AA.YYYY" maxlength="10" style="min-width:110px;font-family:monospace;letter-spacing:1px" oninput="supDateInput(this,'${esc(o.id)}')" onblur="supDateChange('${esc(o.id)}')">
@@ -547,8 +542,8 @@ async function showSupplierView(supplierId){
 
   const tblHeader=`<thead><tr>
     <th style="width:30px"><input type="checkbox" onchange="supToggleAll(this.checked)"></th>
-    <th></th><th>Talep</th><th>Malz. Kodu</th><th>Malzeme Tanımı</th>
-    <th>Bağlanmamış</th><th>Söz Verilen</th><th>Yeni Tarih</th><th>Not</th><th>Cimtaş Notu</th><th></th>
+    <th></th><th>Talep</th><th>Malz. Kodu</th><th>Ek-1</th><th>Malzeme Tanımı</th>
+    <th>Bağlanmamış</th><th>Sip. Tarihi</th><th>Söz Verilen</th><th>Yeni Tarih</th><th>Not</th><th>Cimtaş Notu</th><th></th>
   </tr></thead>`;
 
   document.body.innerHTML=`
@@ -720,7 +715,9 @@ function getSupStats(){
       const u=daysUntil(tarih);
       return u!==null&&u<0||(!r.savedAt&&daysSince>=2)||(u===1&&!r.savedAt);
     });
-    return {...s,status:st,mail:sup.mail||"",mailSayisi,hatirlatmaGereken,daysSince};
+    // Tüm siparişleri beklenmez işaretliyse firma beklenmez
+    const isBeklenmez=s.orders.length>0&&s.orders.every(o=>o.beklenmez);
+    return {...s,status:st,mail:sup.mail||"",mailSayisi,hatirlatmaGereken,daysSince,isBeklenmez};
   });
 }
 
@@ -745,7 +742,6 @@ function renderDash(){
   // BİLDİRİM PANELİ
   const bildirimEl=document.getElementById("bildirim-area");
   if(bildirimEl && _D.sonYanitlar.length){
-    // Tedarikçi bazında grupla
     const tedMap={};
     _D.sonYanitlar.forEach(r=>{
       const o=_D.orders.find(o=>o.id===r.siparis_id);
@@ -755,30 +751,94 @@ function renderDash(){
       if(r.saved_at > tedMap[o.tedNo].sonZaman) tedMap[o.tedNo].sonZaman=r.saved_at;
     });
     const girenler=Object.values(tedMap).sort((a,b)=>b.sonZaman.localeCompare(a.sonZaman));
-    const girmeyenler=getSupStats().filter(s=>s.status==="bekliyor"||s.status==="gecikti");
+    const girmeyenler=getSupStats().filter(s=>s.status==="bekliyor"||s.status==="gecikti").filter(s=>!s.isBeklenmez);
+    const beklenmezler=getSupStats().filter(s=>s.isBeklenmez);
 
     bildirimEl.classList.remove("hidden");
     bildirimEl.innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px">
-        <div class="fw7 text-sm mb8" style="color:#166534">✅ Bu hafta giriş yapanlar (${girenler.length})</div>
-        ${girenler.length===0?'<div class="text-xs" style="color:var(--lgray)">Henüz kimse giriş yapmadı.</div>':
-          girenler.map(t=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #dcfce7">
-            <span class="text-sm fw6 truncate" style="max-width:200px">${esc(t.tedUnvan)}</span>
-            <span class="text-xs" style="color:#16a34a;white-space:nowrap;margin-left:8px">${t.count} kalem · ${fmtDateTime(t.sonZaman)}</span>
-          </div>`).join("")}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <!-- GİRENLER -->
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;overflow:hidden">
+        <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleBildirim('girenler')">
+          <span class="fw7 text-sm" style="color:#166534">✅ Giriş yapanlar (${girenler.length})</span>
+          <span id="chev-girenler" style="color:#16a34a;font-size:12px">▼</span>
+        </div>
+        <div id="panel-girenler" style="padding:0 14px 10px">
+          <input type="text" placeholder="Ara..." oninput="filterBildirim('girenler',this.value)"
+            style="padding:5px 8px;font-size:11px;width:100%;margin-bottom:6px;border-radius:6px;border:1px solid #bbf7d0">
+          <div id="list-girenler" style="max-height:160px;overflow-y:auto">
+            ${girenler.length===0?'<div class="text-xs" style="color:var(--lgray)">Henüz kimse girmedi.</div>':
+              girenler.map(t=>`
+              <div class="bil-row-girenler" data-s="${esc(t.tedUnvan.toLowerCase())}"
+                style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #dcfce7">
+                <span class="text-xs fw6 truncate" style="max-width:130px">${esc(t.tedUnvan)}</span>
+                <span class="text-xs" style="color:#16a34a;white-space:nowrap;margin-left:6px">${t.count}k · ${fmtDateTime(t.sonZaman)}</span>
+              </div>`).join("")}
+          </div>
+        </div>
       </div>
-      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px">
-        <div class="fw7 text-sm mb8" style="color:#991b1b">⏳ Henüz giriş yapmayan (${girmeyenler.length})</div>
-        ${girmeyenler.length===0?'<div class="text-xs" style="color:var(--lgray)">Harika! Herkes girmiş.</div>':
-          girmeyenler.map(s=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #fecaca">
-            <span class="text-sm fw6 truncate" style="max-width:200px">${esc(s.tedUnvan)}</span>
-            <span class="badge b-red" style="font-size:9px">${s.status==="gecikti"?"Gecikmiş":"Bekliyor"}</span>
-          </div>`).join("")}
+      <!-- GİRMEYENLER -->
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;overflow:hidden">
+        <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleBildirim('girmeyenler')">
+          <span class="fw7 text-sm" style="color:#991b1b">⏳ Dönüş beklenenler (${girmeyenler.length})</span>
+          <span id="chev-girmeyenler" style="color:#dc2626;font-size:12px">▼</span>
+        </div>
+        <div id="panel-girmeyenler" style="padding:0 14px 10px">
+          <input type="text" placeholder="Ara..." oninput="filterBildirim('girmeyenler',this.value)"
+            style="padding:5px 8px;font-size:11px;width:100%;margin-bottom:6px;border-radius:6px;border:1px solid #fecaca">
+          <div id="list-girmeyenler" style="max-height:160px;overflow-y:auto">
+            ${girmeyenler.length===0?'<div class="text-xs" style="color:var(--lgray)">Harika! Herkes girmiş.</div>':
+              girmeyenler.map(s=>`
+              <div class="bil-row-girmeyenler" data-s="${esc(s.tedUnvan.toLowerCase())}"
+                style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid #fecaca">
+                <span class="text-xs fw6 truncate" style="max-width:130px">${esc(s.tedUnvan)}</span>
+                <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+                  <span class="badge b-red" style="font-size:9px">${s.status==="gecikti"?"Gecikmiş":"Bekliyor"}</span>
+                  <button class="btn btn-ghost btn-sm" style="font-size:9px;padding:2px 5px" onclick="markBeklenmez('${esc(s.tedNo)}',true)">🚫</button>
+                </div>
+              </div>`).join("")}
+          </div>
+        </div>
+      </div>
+      <!-- BEKLENMEZLEr -->
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <div style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleBildirim('beklenmez')">
+          <span class="fw7 text-sm" style="color:var(--gray)">🚫 Dönüş beklenmiyor (${beklenmezler.length})</span>
+          <span id="chev-beklenmez" style="color:var(--lgray);font-size:12px">▶</span>
+        </div>
+        <div id="panel-beklenmez" style="padding:0 14px 10px;display:none">
+          <div style="max-height:160px;overflow-y:auto">
+            ${beklenmezler.length===0?'<div class="text-xs" style="color:var(--lgray)">Kimse işaretlenmedi.</div>':
+              beklenmezler.map(s=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+                <span class="text-xs fw6 truncate" style="max-width:160px">${esc(s.tedUnvan)}</span>
+                <button class="btn btn-ghost btn-sm" style="font-size:9px;padding:2px 5px" onclick="markBeklenmez('${esc(s.tedNo)}',false)" title="Geri al">↩</button>
+              </div>`).join("")}
+          </div>
+        </div>
       </div>
     </div>`;
+
+    window.toggleBildirim=function(panel){
+      const el=document.getElementById("panel-"+panel);
+      const chev=document.getElementById("chev-"+panel);
+      if(!el) return;
+      const hidden=el.style.display==="none"||el.style.display==="";
+      el.style.display=hidden?"block":"none";
+      if(chev) chev.textContent=hidden?"▼":"▶";
+    };
+    window.filterBildirim=function(panel, q){
+      q=q.toLowerCase();
+      document.querySelectorAll(".bil-row-"+panel).forEach(row=>{
+        row.style.display=!q||row.dataset.s.includes(q)?"":"none";
+      });
+    };
+    window.markBeklenmez=async function(tedNo, val){
+      await setBeklenmez(tedNo, val);
+      flash(val?"Dönüş beklenmiyor olarak işaretlendi.":"Geri alındı.");
+      await loadDashData();
+      renderDash();
+    };
   } else if(bildirimEl){
     bildirimEl.classList.add("hidden");
   }
@@ -798,11 +858,11 @@ function renderDash(){
     <div class="stat ${_D.filter==="hatirlatma"?"active":""}" onclick="setFilter('hatirlatma')"><div class="stat-val c-orange">${totals.hatirlatma}</div><div class="stat-lbl">🔔 Hatırlatma</div></div>`;
 
   // FILTER & SEARCH
-  let filtered=sups;
-  if(_D.filter==="tamamlandi") filtered=sups.filter(s=>s.status==="tamamlandi");
-  else if(_D.filter==="bekliyor") filtered=sups.filter(s=>s.status==="bekliyor"||s.status==="kismi");
-  else if(_D.filter==="gecikti") filtered=sups.filter(s=>s.status==="gecikti");
-  else if(_D.filter==="hatirlatma") filtered=sups.filter(s=>s.hatirlatmaGereken.length>0&&s.status!=="tamamlandi");
+  let filtered=sups.filter(s=>!s.isBeklenmez);
+  if(_D.filter==="tamamlandi") filtered=sups.filter(s=>s.status==="tamamlandi"&&!s.isBeklenmez);
+  else if(_D.filter==="bekliyor") filtered=sups.filter(s=>(s.status==="bekliyor"||s.status==="kismi")&&!s.isBeklenmez);
+  else if(_D.filter==="gecikti") filtered=sups.filter(s=>s.status==="gecikti"&&!s.isBeklenmez);
+  else if(_D.filter==="hatirlatma") filtered=sups.filter(s=>s.hatirlatmaGereken.length>0&&s.status!=="tamamlandi"&&!s.isBeklenmez);
   if(_D.search) filtered=filtered.filter(s=>
     s.tedUnvan.toLowerCase().includes(_D.search)||
     s.tedNo.includes(_D.search)||
@@ -851,6 +911,7 @@ function renderDash(){
             ✉ ${s.mailSayisi===0?"İlk Mail At":s.mailSayisi+1+". Hatırlatma"}
           </button>`:'<span class="text-xs" style="color:var(--lgray)">Mail yok</span>'}
           ${gecikmisOrders.length&&s.mail?`<button class="btn btn-red btn-sm" onclick="sendMail('${esc(s.tedNo)}','${esc(s.tedUnvan)}','${esc(s.mail)}','gecikme',1,${JSON.stringify(gecikmisOrders.map(o=>({malzKodu:o.malzKodu,malzTanim:o.malzTanim,sozTarih:o.sozTarih}))).replace(/"/g,"&quot;")})">⚠ Gecikme</button>`:""}
+          <button class="btn btn-ghost btn-sm" style="font-size:10px;color:var(--lgray)" onclick="markBeklenmez('${esc(s.tedNo)}',true)" title="Dönüş beklemiyorum">🚫</button>
         </div>
         <span id="chev-${esc(s.tedNo)}" style="color:var(--lgray);font-size:12px;margin-left:4px">▶</span>
       </div>
@@ -876,7 +937,7 @@ function renderDash(){
         <div class="tbl-wrap">
           <table id="det-tbl-${esc(s.tedNo)}">
             <thead><tr>
-              <th>Talep</th><th>Malz. Kodu</th><th>Malzeme</th><th>Bağlanmamış</th><th>Söz Verilen</th><th>Yeni Tarih</th><th>Giriş Tarihi</th><th>Not</th><th>Cevap</th><th>Gizle</th><th>Durum</th>
+              <th>Talep</th><th>Malz. Kodu</th><th>Ek-1</th><th>Malzeme</th><th>Bağlanmamış</th><th>Sip. Tarihi</th><th>Söz Verilen</th><th>Yeni Tarih</th><th>Giriş Tarihi</th><th>Not</th><th>Cevap</th><th>Gizle</th><th>Durum</th>
             </tr></thead>
             <tbody id="det-body-${esc(s.tedNo)}">
               ${s.orders.map(o=>{
@@ -886,8 +947,10 @@ function renderDash(){
                 return `<tr class="${st2==="gecikti"?"late":st2==="girildi"?"done":""}${o.gizli?" gizli":""}" data-st="${st2}" data-s="${esc((o.malzKodu+" "+o.malzTanim).toLowerCase())}">
                   <td class="mono">${esc(o.talepTipi)} ${esc(o.talepNo)}/${esc(o.strNo)}</td>
                   <td class="mono">${esc(o.malzKodu)}</td>
+                  <td class="text-xs" style="color:var(--gray);max-width:80px" class="truncate">${esc(o.ek1||"—")}</td>
                   <td class="truncate" style="max-width:180px">${esc(o.malzTanim)}</td>
                   <td>${esc(o.bagMiktar)}</td>
+                  <td class="text-xs" style="color:var(--lgray)">${o.sipTarih?fmtDate(o.sipTarih):"—"}</td>
                   <td>${fmtDate(o.sozTarih)}</td>
                   <td class="fw6">
                     ${r.yeniTarih?fmtDate(r.yeniTarih):"—"}
@@ -950,11 +1013,8 @@ function renderDash(){
     +"Form Linki: "+link+"\nErişim Şifresi: "+tedNo+"\n\n"
     +"Konunun aciliyeti nedeniyle bugün dönüş bekliyoruz.\n\n"
     +"Saygılarımızla,\nÇimtaş Hassas İşleme Satın Alma";
-  showMailPreview(emails.join("; "), subj, body, async()=>{
-    openMailto("mailto:"+emails.join(";")+`?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`);
-    await logMail(tedNo, tedUnvan, "acil", 1);
-    flash("Acil mail gönderildi.");
-  });
+  openMailto("mailto:"+emails.join(";")+`?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`);
+  logMail(tedNo, tedUnvan, "acil", 1);
 };
 
 window.detFilter=function(tedNo, f, btn){
@@ -1028,13 +1088,10 @@ window.sendMail=async function(tedNo, tedUnvan, mail, tip, hatNo, kalemlerJson){
   const {subj,body}=buildMail(tedUnvan,tip,link,tedNo,hatNo,kalemler);
   const emails=normalizeEmails(mail);
   if(!emails.length){flash("Mail adresi yok.","warn");return;}
-  showMailPreview(emails.join("; "),subj,body,async()=>{
-    openMailto("mailto:"+emails.join(";")+`?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`);
-    await logMail(tedNo,tedUnvan,tip,hatNo||1);
-    flash("Mail gönderildi.");
-    await loadDashData();
-    renderDash();
-  });
+  openMailto("mailto:"+emails.join(";")+`?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`);
+  await logMail(tedNo,tedUnvan,tip,hatNo||1);
+  await loadDashData();
+  renderDash();
 };
 
 window.topluMailSec=function(){
@@ -1060,23 +1117,25 @@ window.topluMailSec=function(){
     const {subj,body}=buildMail(s.tedUnvan,tip2,link,s.tedNo,hatNo,null);
     const emails=normalizeEmails(s.mail);
 
-    // Her mail için onay iste
+    // Kompakt onay kutusu — önizleme yok, tek tık
+    const mailTipiEtiket = tip2==="ilk" ? "İlk mail" : hatNo+". hatırlatma";
     showModal(`
-    <div class="modal">
-      <div class="modal-hdr">
-        <h3>📧 ${idx}/${hedefler.length} — ${esc(s.tedUnvan)}</h3>
-        <button onclick="closeModal();window._topluIptal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#94A3B8;line-height:1">×</button>
-      </div>
-      <div class="modal-body">
-        <span class="field-lbl">Alıcı</span><div style="font-size:13px;margin-bottom:4px">${esc(emails.join("; "))}</div>
-        <span class="field-lbl">Konu</span><div style="font-size:13px;margin-bottom:4px">${esc(subj)}</div>
-        <span class="field-lbl">İçerik</span>
-        <div class="mail-preview">${esc(body)}</div>
+    <div class="modal" style="max-width:420px">
+      <div class="modal-body" style="text-align:center;padding:24px 20px">
+        <div style="font-size:11px;font-weight:700;color:var(--lgray);letter-spacing:.5px;margin-bottom:10px">
+          ${idx} / ${hedefler.length}
+        </div>
+        <div class="prog" style="width:100%;height:5px;margin-bottom:16px">
+          <div class="prog-bar" style="width:${Math.round(idx/hedefler.length*100)}%;background:var(--orange)"></div>
+        </div>
+        <div class="fw7" style="font-size:15px;margin-bottom:4px">${esc(s.tedUnvan)}</div>
+        <div class="text-xs" style="color:var(--gray);margin-bottom:2px">${esc(emails.join("; "))}</div>
+        <span class="badge ${tip2==="ilk"?"b-blue":hatNo>=3?"b-red":"b-amber"}" style="margin-top:8px">${mailTipiEtiket}</span>
       </div>
       <div class="modal-ftr">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal();window._topluIptal()">Durdur</button>
         <button class="btn btn-ghost btn-sm" onclick="closeModal();window._topluAtla()">⏭ Atla</button>
-        <button class="btn btn-ghost btn-sm" onclick="closeModal();window._topluIptal()">İptal</button>
-        <button class="btn btn-primary btn-sm" onclick="window._topluGonder()">✉ Gönder</button>
+        <button class="btn btn-primary" onclick="window._topluGonder()" autofocus>✉ Gönder</button>
       </div>
     </div>`);
 

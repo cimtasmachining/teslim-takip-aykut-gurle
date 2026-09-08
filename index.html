@@ -1043,18 +1043,55 @@ window.topluMailSec=function(){
   const sups=getSupStats();
   const hedefler=sups.filter(s=>secili.includes(s.tedNo)&&s.mail);
   if(!hedefler.length){flash("Seçili tedarikçilerin mail adresi yok.","warn");return;}
+
   let idx=0;
+  let gonderilen=0;
+
   function next(){
-    if(idx>=hedefler.length){flash(hedefler.length+" mail gönderildi.");loadDashData().then(renderDash);return;}
+    if(idx>=hedefler.length){
+      flash(gonderilen+" mail gönderildi.");
+      loadDashData().then(renderDash);
+      return;
+    }
     const s=hedefler[idx++];
     const link=buildLink(s.tedNo);
     const tip2=s.mailSayisi===0?"ilk":"hatirlatma";
     const hatNo=Math.min(s.mailSayisi+1,3);
     const {subj,body}=buildMail(s.tedUnvan,tip2,link,s.tedNo,hatNo,null);
     const emails=normalizeEmails(s.mail);
-    openMailto("mailto:"+emails.join(";")+`?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`);
-    logMail(s.tedNo,s.tedUnvan,tip2,hatNo);
-    setTimeout(next,1800);
+
+    // Her mail için onay iste
+    showModal(`
+    <div class="modal">
+      <div class="modal-hdr">
+        <h3>📧 ${idx}/${hedefler.length} — ${esc(s.tedUnvan)}</h3>
+        <button onclick="closeModal();window._topluIptal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#94A3B8;line-height:1">×</button>
+      </div>
+      <div class="modal-body">
+        <span class="field-lbl">Alıcı</span><div style="font-size:13px;margin-bottom:4px">${esc(emails.join("; "))}</div>
+        <span class="field-lbl">Konu</span><div style="font-size:13px;margin-bottom:4px">${esc(subj)}</div>
+        <span class="field-lbl">İçerik</span>
+        <div class="mail-preview">${esc(body)}</div>
+      </div>
+      <div class="modal-ftr">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal();window._topluAtla()">⏭ Atla</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal();window._topluIptal()">İptal</button>
+        <button class="btn btn-primary btn-sm" onclick="window._topluGonder()">✉ Gönder</button>
+      </div>
+    </div>`);
+
+    window._topluGonder=async function(){
+      closeModal();
+      openMailto("mailto:"+emails.join(";")+`?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`);
+      await logMail(s.tedNo,s.tedUnvan,tip2,hatNo);
+      gonderilen++;
+      setTimeout(next,600);
+    };
+    window._topluAtla=function(){ setTimeout(next,100); };
+    window._topluIptal=function(){
+      flash(gonderilen+" mail gönderildi, işlem durduruldu.");
+      loadDashData().then(renderDash);
+    };
   }
   next();
 };

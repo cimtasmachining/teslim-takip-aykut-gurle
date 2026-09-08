@@ -180,9 +180,9 @@ async function uploadOrders(rows) {
   await sbDelete("mail_log?id=gt.0"); // Yeni liste = hatırlatma sayacı sıfırla
   const mapped = rows.map(r=>({
     id:r.id, talep_tipi:r.talepTipi, talep_no:r.talepNo, str_no:r.strNo,
-    malz_kodu:r.malzKodu, malz_tanim:r.malzTanim, orig_qty:r.origQty,
-    bag_miktar:r.bagMiktar, soz_tarih:r.sozTarih, ted_no:r.tedNo,
-    ted_unvan:r.tedUnvan, acil:r.acil||false
+    malz_kodu:r.malzKodu, malz_tanim:r.malzTanim, ek1:r.ek1||"", orig_qty:r.origQty,
+    bag_miktar:r.bagMiktar, soz_tarih:r.sozTarih, sip_tarih:r.sipTarih||"",
+    ted_no:r.tedNo, ted_unvan:r.tedUnvan, acil:r.acil||false, beklenmez:false
   }));
   for(let i=0;i<mapped.length;i+=100) await sbPost("siparisler", mapped.slice(i,i+100));
   await setAyar("uploadedAt", new Date().toISOString().slice(0,10));
@@ -326,9 +326,9 @@ function parseOrderExcel(wb){
       id:tedNo+"-"+talepNo+"-"+strNo,
       talepTipi:String(r[0]||"").trim(), talepNo, strNo,
       malzKodu:String(r[3]||"").trim(), malzTanim:String(r[4]||"").trim(),
-      ek1:String(r[13]||"").trim(),
+      ek1:String(r[13]!==undefined&&r[13]!==null?r[13]:"").trim(),
       origQty:String(r[5]||"").trim(), bagMiktar:String(r[6]||"").trim(),
-      sozTarih:serialToISO(r[9]), sipTarih:serialToISO(r[15]),
+      sozTarih:serialToISO(r[9]), sipTarih:serialToISO(r[15]!==undefined?r[15]:""),
       tedNo, tedUnvan:String(r[12]||"").trim(), acil:false, beklenmez:false
     });
   }
